@@ -34,7 +34,9 @@ import { UserProvider, useUser } from './src/context/UserContext';
 // Theme
 import { theme } from './styles/theme';
 import { getFCMToken, setupNotificationListeners } from './src/services/pushNotificationHelper';
-import configureNotifications from './src/services/PushNotificationConfig';
+
+// ❌ REMOVED: configureNotifications import (It was causing issues)
+// ❌ REMOVED: PushNotification import
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -113,9 +115,18 @@ const AppNavigator = () => {
 
   useEffect(() => {
     if (user && navigationRef.current) {
+      // 1. Get Token & Register with Backend
       getFCMToken();
-      setupNotificationListeners(navigationRef.current);
-      configureNotifications(navigationRef.current); // Initialize local push notifications
+      
+      // 2. Setup Foreground Listeners
+      const unsubscribe = setupNotificationListeners();
+      
+      // ❌ REMOVED: PushNotification.createChannel (It was returning false/failing)
+
+      // 4. Cleanup on unmount
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
     }
   }, [user]);
 
@@ -219,8 +230,6 @@ const App = () => {
 };
 
 export default App;
-
-
 
 
 // // App.js - COMPLETELY REPLACE THIS FILE
