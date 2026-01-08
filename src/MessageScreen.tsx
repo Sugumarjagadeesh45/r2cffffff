@@ -893,6 +893,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useRoute, useNavigation } from '@react-navigation/native';
+
+import messaging from '@react-native-firebase/messaging';
+
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import API_URL from './utiliti/config';
 import * as socket from './services/socket';
@@ -1300,6 +1304,39 @@ useEffect(() => {
       keyboardDidHideListener.remove();
     };
   }, []);
+
+
+
+// useEffect(() => {
+//   const handleNotificationOpen = (notification) => {
+//     if (notification.data?.type === 'chat_message' && 
+//         notification.data?.otherUserId !== otherUser?._id) {
+//       // Navigate to the sender's chat if not already there
+//       navigation.replace('Message', {
+//         user: { _id: notification.data.otherUserId }
+//       });
+//     }
+//   };
+
+//   // Check if app was opened from notification
+//   messaging().getInitialNotification().then(remoteMessage => {
+//     if (remoteMessage) {
+//       handleNotificationOpen(remoteMessage);
+//     }
+//   });
+
+//   // Handle notification when app is in background
+//   const unsubscribe = messaging().onNotificationOpenedApp(remoteMessage => {
+//     if (remoteMessage) {
+//       handleNotificationOpen(remoteMessage);
+//     }
+//   });
+
+//   return unsubscribe;
+// }, [navigation, otherUser?._id]);
+
+
+
 
   // Handle typing indicator
   const handleInputTextChanged = useCallback((text) => {
