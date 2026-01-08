@@ -21,7 +21,7 @@ const getApiUrl = () => {
     // If using a Physical Android Device: Replace '10.136.59.126' with your PC's actual local IP address.
     // (You can find your PC's IP by running `ipconfig` on Windows or `ifconfig` on macOS/Linux).
     // Ensure your PC and device are on the same Wi-Fi network.
-    return 'http://192.168.84.126:5000'; 
+    return 'http://10.136.59.126:5000'; 
   }
   
   // For iOS (simulator or device)
