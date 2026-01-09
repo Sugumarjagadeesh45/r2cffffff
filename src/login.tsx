@@ -15,13 +15,16 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAuth, signInWithPhoneNumber, onAuthStateChanged, signOut } from '@react-native-firebase/auth';
-import auth from '@react-native-firebase/auth';
+import { getAuth, signInWithPhoneNumber, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithCredential } from '@react-native-firebase/auth';
+
+
+
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import API_URL from './utiliti/config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useUser } from './context/UserContext';
+import { getApp } from '@react-native-firebase/app';
 
 const theme = {
   background: '#121212',
@@ -82,54 +85,6 @@ useEffect(() => {
   return () => subscriber();
 }, [fadeAnim, slideAnim, scaleAnim, navigation]);
 
-// Update all login success handlers - Remove navigation from here
-const handleEmailLogin = async () => {
-  if (!email || !password) {
-    Alert.alert('Error', 'Please enter email and password');
-    return;
-  }
-  setLoading(true);
-  try {
-    console.log('Attempting login with email:', email);
-    
-    const response = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    
-    const data = await response.json();
-    console.log('Login response:', data);
-    
-    if (response.ok && data.success) {
-      console.log('✅ Email login successful');
-      
-      // Use UserContext to handle login - this will trigger navigation via AuthNavigator
-      await login(data.token, {
-        user: data.user,
-        userData: null
-      });
-      
-      // Store tokens directly for redundancy
-      await AsyncStorage.multiSet([
-        ['authToken', data.token],
-        ['userInfo', JSON.stringify(data.user)]
-      ]);
-      
-      console.log('✅ Login completed, navigation will be handled by AuthNavigator');
-    } else {
-      Alert.alert('Error', data.message || 'Login failed');
-    }
-  } catch (error) {
-    console.error('Email login error:', error);
-    Alert.alert('Error', 'Network error. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
-
-// Similarly update handleVerifyOTP and handleGoogleLogin - remove navigation logic
-
 
 
   const handlePhoneLogin = async () => {
@@ -158,167 +113,237 @@ const handleEmailLogin = async () => {
     }
   };
 
-  const handleVerifyOTP = async () => {
-    if (!confirmation || !otp || otp.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit OTP');
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await confirmation.confirm(otp);
-      const currentUser = result.user;
-      console.log('OTP verified, user:', currentUser.uid, currentUser.phoneNumber);
-      if (currentUser) {
-        const phone = `+91${phoneNumber}`;
-        const response = await fetch(`${API_URL}/api/auth/verify-phone`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phoneNumber: phone }),
-        });
-        const data = await response.json();
-        console.log('verify-phone response:', data);
-        if (response.ok) {
-          console.log('Phone verification successful');
-          
-          // Use UserContext to handle login
-          await login(data.token, {
-            user: data.user,
-            userData: null
-          });
-          
-          setShowOTPModal(false);
-          setOtp('');
-          
-          // Navigate based on registration status
-          if (data.user && !data.user.registrationComplete) {
-            navigation.reset({
-              index: 0,
-              routes: [{ 
-                name: 'Main', 
-                params: { 
-                  screen: 'Home', 
-                  params: { showRegistrationModal: true } 
-                } 
-              }],
-            });
-          } else {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Main' }],
-            });
-          }
-        } else {
-          console.error('verify-phone failed:', data.message);
-          Alert.alert('Error', data.message || 'Failed to verify user status');
-        }
-      }
-    } catch (error) {
-      console.error('OTP verification error:', error);
-      Alert.alert('Invalid OTP', error.message || 'The OTP you entered is incorrect. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleGoogleLogin = async () => {
-    if (loading) return;
-    setLoading(true);
+
+
+  
+
+  // In your LoginScreen.js, update the handleEmailLogin function:
+const handleEmailLogin = async () => {
+  if (!email || !password) {
+    Alert.alert('Error', 'Please enter email and password');
+    return;
+  }
+  setLoading(true);
+  try {
+    console.log('Attempting login with email:', email);
+    
+    const response = await fetch(`${API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    
+    // Log the response status and text for debugging
+    console.log('Response status:', response.status);
+    const responseText = await response.text();
+    console.log('Response text:', responseText);
+    
+    // Try to parse as JSON
+    let data;
     try {
-      const hasPlayServices = await GoogleSignin.hasPlayServices({
-        showPlayServicesUpdateDialog: true,
-      });
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('JSON parse error:', e);
+      throw new Error('Invalid server response');
+    }
+    
+    console.log('Login response:', data);
+    
+    if (response.ok && data.success) {
+      console.log('✅ Email login successful');
       
-      if (!hasPlayServices) {
-        throw new Error('Google Play Services are not available');
-      }
-      
-      const userInfo = await GoogleSignin.signIn();
-      console.log('Google Sign-In Response:', JSON.stringify(userInfo, null, 2));
-      
-      const idToken = userInfo.idToken || (userInfo.data && userInfo.data.idToken);
-      
-      if (!idToken) {
-        throw new Error('No ID token found in Google Sign-In response');
-      }
-      
-      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
-      const userCredential = await auth().signInWithCredential(googleCredential);
-      
-      const firebaseUser = userCredential.user;
-      console.log('Firebase user:', firebaseUser.uid, firebaseUser.email);
-      
-      const userData = {
-        idToken: idToken
+      // Store user profile with registrationComplete flag
+      const userProfileData = {
+        ...data.user,
+        registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
       };
       
-      const response = await fetch(`${API_URL}/api/auth/google-signin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData),
+      await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
+      
+      // Use UserContext to handle login
+      const loginResult = await login(data.token, {
+        user: data.user,
+        userData: userProfileData
       });
       
+      if (loginResult.success) {
+        console.log('✅ Login completed, navigation will be handled by AuthNavigator');
+      } else {
+        throw new Error(loginResult.error || 'Failed to update authentication state');
+      }
+    } else {
+      Alert.alert('Error', data.message || 'Login failed');
+    }
+  } catch (error) {
+    console.error('Email login error:', error);
+    Alert.alert('Error', error.message || 'Network error. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+// In your LoginScreen.js, update the handleVerifyOTP function:
+const handleVerifyOTP = async () => {
+  if (!confirmation || !otp || otp.length !== 6) {
+    Alert.alert('Error', 'Please enter a valid 6-digit OTP');
+    return;
+  }
+  setLoading(true);
+  try {
+    const result = await confirmation.confirm(otp);
+    const currentUser = result.user;
+    console.log('OTP verified, user:', currentUser.uid, currentUser.phoneNumber);
+    if (currentUser) {
+      const phone = `+91${phoneNumber}`;
+      const response = await fetch(`${API_URL}/api/auth/verify-phone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: phone }),
+      });
       const data = await response.json();
-      console.log('Google backend response:', data);
-      
-      if (response.ok && data.success) {
-        console.log('Google authentication successful');
+      console.log('verify-phone response:', data);
+      if (response.ok) {
+        console.log('Phone verification successful');
+        
+        // Store user profile with registrationComplete flag
+        const userProfileData = {
+          ...data.user,
+          registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
+        };
+        
+        await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
         
         // Use UserContext to handle login
-        await login(data.token, {
+        const loginResult = await login(data.token, {
           user: data.user,
-          userData: null
+          userData: userProfileData
         });
         
-        // Navigate based on registration status
-        if (data.user && !data.user.registrationComplete) {
-          navigation.reset({
-            index: 0,
-            routes: [{ 
-              name: 'Main', 
-              params: { 
-                screen: 'Home', 
-                params: { showRegistrationModal: true } 
-              } 
-            }],
-          });
+        if (loginResult.success) {
+          setShowOTPModal(false);
+          setOtp('');
+          console.log('✅ Phone login completed, navigation will be handled by AuthNavigator');
         } else {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Main' }],
-          });
+          throw new Error(loginResult.error || 'Failed to update authentication state');
         }
       } else {
-        throw new Error(data.message || `Backend returned ${response.status}`);
+        console.error('verify-phone failed:', data.message);
+        Alert.alert('Error', data.message || 'Failed to verify user status');
       }
-      
-    } catch (error) {
-      console.log('Google Sign-In error:', error);
-      
-      let errorMessage = 'An unknown error occurred';
-      
-      if (error.code) {
-        switch (error.code) {
-          case statusCodes.SIGN_IN_CANCELLED:
-            errorMessage = 'You cancelled the Google sign-in process';
-            break;
-          case statusCodes.IN_PROGRESS:
-            errorMessage = 'Another sign-in process is already in progress';
-            break;
-          case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
-            errorMessage = 'Google Play Services is not available';
-            break;
-          default:
-            errorMessage = error.message || 'An unknown error occurred';
-        }
-      } else {
-        errorMessage = error.message || 'An unknown error occurred';
-      }
-      
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error('OTP verification error:', error);
+    Alert.alert('Invalid OTP', error.message || 'The OTP you entered is incorrect. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+
+
+// In your LoginScreen.js, update the handleGoogleLogin function:
+const handleGoogleLogin = async () => {
+  if (loading) return;
+  setLoading(true);
+  try {
+    const hasPlayServices = await GoogleSignin.hasPlayServices({
+      showPlayServicesUpdateDialog: true,
+    });
+    
+    if (!hasPlayServices) {
+      throw new Error('Google Play Services are not available');
+    }
+    
+    const userInfo = await GoogleSignin.signIn();
+    console.log('Google Sign-In Response:', JSON.stringify(userInfo, null, 2));
+    
+    const idToken = userInfo.idToken || (userInfo.data && userInfo.data.idToken);
+    
+    if (!idToken) {
+      throw new Error('No ID token found in Google Sign-In response');
+    }
+    
+    const app = getApp();
+    const auth = getAuth(app);
+    const googleCredential = GoogleAuthProvider.credential(idToken);
+    const userCredential = await signInWithCredential(auth, googleCredential);
+
+    const firebaseUser = userCredential.user;
+    console.log('Firebase user:', firebaseUser.uid, firebaseUser.email);
+    
+    const userData = {
+      idToken: idToken
+    };
+    
+    const response = await fetch(`${API_URL}/api/auth/google-signin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData),
+    });
+    
+    const data = await response.json();
+    console.log('Google backend response:', data);
+    
+    if (response.ok && data.success) {
+      console.log('Google authentication successful');
+      
+      // Store user profile with registrationComplete flag
+      const userProfileData = {
+        ...data.user,
+        registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
+      };
+      
+      await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
+      
+      // Use UserContext to handle login
+      const loginResult = await login(data.token, {
+        user: data.user,
+        userData: userProfileData
+      });
+      
+      if (loginResult.success) {
+        console.log('✅ Google login completed, navigation will be handled by AuthNavigator');
+      } else {
+        throw new Error(loginResult.error || 'Failed to update authentication state');
+      }
+    } else {
+      throw new Error(data.message || `Backend returned ${response.status}`);
+    }
+    
+  } catch (error) {
+    console.log('Google Sign-In error:', error);
+    
+    let errorMessage = 'An unknown error occurred';
+    
+    if (error.code) {
+      switch (error.code) {
+        case statusCodes.SIGN_IN_CANCELLED:
+          errorMessage = 'You cancelled the Google sign-in process';
+          break;
+        case statusCodes.IN_PROGRESS:
+          errorMessage = 'Another sign-in process is already in progress';
+          break;
+        case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+          errorMessage = 'Google Play Services is not available';
+          break;
+        default:
+          errorMessage = error.message || 'An unknown error occurred';
+      }
+    } else {
+      errorMessage = error.message || 'An unknown error occurred';
+    }
+    
+    Alert.alert('Error', errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleSocialLogin = (provider) => {
     if (provider === 'google') {

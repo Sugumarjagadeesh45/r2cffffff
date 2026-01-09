@@ -97,13 +97,23 @@ const ProfileScreen = () => {
   }
 }, [user, userData]);
 
+
+
+// debugUserData சார்பை மாற்றவும்
+const debugUserData = () => {
+  console.log('=== USER DATA DEBUG ===');
+  console.log('User object:', user);
+  console.log('User _id (MongoDB ID):', user?._id);
+  console.log('User userId (Display ID):', user?.userId);
+  console.log('User Data object:', userData);
+  console.log('Current userId state:', userId);
+  console.log('======================');
+};
+
+// loadUserData சார்பில்
 const loadUserData = async () => {
   try {
-    console.log('Loading user data including User ID...');
-    
-    // First try to get from user context
     if (user) {
-      // Prioritize the custom userId field
       const userID = user.userId || user._id || user.id;
       if (userID) {
         console.log('User ID from context:', userID);
@@ -112,36 +122,20 @@ const loadUserData = async () => {
       }
     }
     
-    // If not in context, fetch from API
     const response = await UserService.getUserProfile();
-    console.log('User profile API response:', response);
-    
     if (response.success && response.data) {
-      console.log('User profile data:', response.data);
-      
-      // Set User ID from the user object in the response
-      const userID = response.data.user?.userId || response.data.user?._id || response.data.user?.id;
+      const userID = response.data.user?.userId || response.data.user?._id;
       if (userID) {
         console.log('Setting User ID from API:', userID);
         setUserId(userID);
-      } else {
-        console.log('No User ID found in profile response');
       }
     }
   } catch (error) {
     console.error('Error loading user data:', error);
   }
 };
-// Update the debug function to check the correct field
-const debugUserData = () => {
-  console.log('=== USER DATA DEBUG ===');
-  console.log('User object:', user);
-  console.log('User _id (MongoDB ID):', user?._id);
-  console.log('User userId (Display ID):', user?.userId); // This is what you want
-  console.log('User Data object:', userData);
-  console.log('Current userId state:', userId);
-  console.log('======================');
-};
+
+
 
 
   // Call debug function when component mounts or user changes

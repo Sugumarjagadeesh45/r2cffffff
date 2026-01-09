@@ -1,8 +1,9 @@
-// D:\re_ap-main\re_ap-main\src\context\UserContext.js
+// src/context/UserContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { getAuth, onAuthStateChanged, signOut } from '@react-native-firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import UserService from '../services/userService';
+import { registerPendingFcmToken } from '../services/pushNotificationHelper';
 
 const UserContext = createContext();
 
@@ -15,7 +16,7 @@ export const UserProvider = ({ children }) => {
   // Clear all auth storage
   const clearAuthStorage = async () => {
     try {
-      await AsyncStorage.multiRemove(['authToken', 'userInfo', 'userToken']);
+      await AsyncStorage.multiRemove(['authToken', 'userInfo', 'userToken', 'userProfile']);
       console.log('🧹 Auth storage cleared');
     } catch (error) {
       console.error('Error clearing auth storage:', error);
@@ -129,29 +130,32 @@ export const UserProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  // Login function
-  const login = async (authToken, userInfo) => {
+  // FIXED Login function
+  const login = async (authToken, userData) => {
     try {
-      console.log('🔑 UserContext login called');
+      console.log('🔐 Logging in user...');
       
-      // Store tokens consistently
-      await AsyncStorage.multiSet([
-        ['authToken', authToken],
-        ['userToken', authToken],
-        ['userInfo', JSON.stringify(userInfo.user)]
-      ]);
+      // Store auth token and user data
+      await AsyncStorage.setItem('authToken', authToken);
+      await AsyncStorage.setItem('userInfo', JSON.stringify(userData.user));
       
+      // Update state correctly - using proper state setters
       setToken(authToken);
-      setUser(userInfo.user);
+      setUser(userData.user);
       
-      // Fetch complete user profile
-      await fetchUserProfile();
+      // Set userData if provided
+      if (userData.userData) {
+        setUserData(userData.userData);
+        await AsyncStorage.setItem('userProfile', JSON.stringify(userData.userData));
+      }
       
-      console.log('✅ Login successful in UserContext');
+      // Register any pending FCM token after successful login
+      await registerPendingFcmToken();
+      
       return { success: true };
     } catch (error) {
-      console.error('❌ Login error in UserContext:', error);
-      return { success: false, message: error.message };
+      console.error('Login error:', error);
+      return { success: false, error: error.message };
     }
   };
 
@@ -264,8 +268,6 @@ export const useUser = () => {
   }
   return context;
 };
-
-
 
 // // D:\cddd\NEW_reals2chat_frontend-main\src\context\UserContext.js
 // import React, { createContext, useState, useContext, useEffect } from 'react';
