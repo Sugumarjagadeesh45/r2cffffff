@@ -55,9 +55,18 @@ android {
         versionCode 1
         versionName "1.0"
 
-        ndk {
-            abiFilters "armeabi-v7a" // Fast builds in dev; re-enable others for production
-        }
+        // ndk {
+        //     abiFilters "armeabi-v7a" // Fast builds in dev; re-enable others for production
+        // }
+
+
+
+
+
+
+
+
+
     }
 
 
@@ -74,6 +83,14 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+
+        release {
+            storeFile file('my-release-key.keystore')
+            storePassword '123456'
+            keyAlias 'my-key-alias'
+            keyPassword '123456'
+        }
+
     }
 
     buildTypes {
@@ -84,8 +101,11 @@ android {
             renderscriptDebuggable false
             minifyEnabled false
         }
-        release {
-            signingConfig signingConfigs.debug
+release {
+            // Add this line:
+            signingConfig signingConfigs.release
+            
+            // Keep your existing lines:
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

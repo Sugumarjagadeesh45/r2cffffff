@@ -206,8 +206,9 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import PushNotification from 'react-native-push-notification';
 import { getApp } from '@react-native-firebase/app';
+import getApiUrl from '../utiliti/config';
 
-const API_URL = 'http://10.136.59.126:5000/api'; 
+const API_URL = `${getApiUrl}/api`;
 
 // Create notification channel (call this once in your app)
 PushNotification.createChannel(

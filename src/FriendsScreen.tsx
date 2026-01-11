@@ -55,7 +55,10 @@ const FriendsScreen = () => {
       try {
         const friendsResponse = await fetch(`${API_URL}/api/friends`, { 
           method: 'GET', 
-          headers 
+                 headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         });
         
         if (friendsResponse.ok) {
@@ -73,7 +76,10 @@ const FriendsScreen = () => {
       try {
         const suggestionsResponse = await fetch(`${API_URL}/api/friends/suggestions`, { 
           method: 'GET', 
-          headers 
+           headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         });
         
         if (suggestionsResponse.ok) {
@@ -91,7 +97,10 @@ const FriendsScreen = () => {
       try {
         const requestsResponse = await fetch(`${API_URL}/api/friends/requests/pending`, { 
           method: 'GET', 
-          headers 
+           headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         });
         
         if (requestsResponse.ok) {
