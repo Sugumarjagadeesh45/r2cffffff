@@ -12,11 +12,13 @@ export const UserProvider = ({ children }) => {
   const [userData, setUserData] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [showRegistrationAlert, setShowRegistrationAlert] = useState(false);
 
   // Clear all auth storage
   const clearAuthStorage = async () => {
     try {
-      await AsyncStorage.multiRemove(['authToken', 'userInfo', 'userToken', 'userProfile']);
+      await AsyncStorage.multiRemove(['authToken', 'userInfo', 'userToken', 'userProfile', 'hasSeenRegistrationAlert']);
       console.log('🧹 Auth storage cleared');
     } catch (error) {
       console.error('Error clearing auth storage:', error);
@@ -62,6 +64,7 @@ export const UserProvider = ({ children }) => {
         // Check for backend token
         const backendToken = await AsyncStorage.getItem('authToken');
         const userInfo = await AsyncStorage.getItem('userInfo');
+        const hasSeenAlert = await AsyncStorage.getItem('hasSeenRegistrationAlert');
         
         console.log('📱 Storage - Token:', !!backendToken, 'UserInfo:', !!userInfo);
 
@@ -130,31 +133,139 @@ export const UserProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  // FIXED Login function
-  const login = async (authToken, userData) => {
-    try {
-      console.log('🔐 Logging in user...');
+
+  
+  // src/context/UserContext.js
+// Add these updates to your existing context
+
+// Update the login function in UserContext.js
+const login = async (authToken, userData, isNew = false) => {
+  try {
+    console.log('🔐 Logging in user...', { isNew });
+    
+    // Store auth token and user data
+    await AsyncStorage.setItem('authToken', authToken);
+    await AsyncStorage.setItem('userInfo', JSON.stringify(userData.user));
+    
+    // Store user profile with registration status
+    const profileData = {
+      ...userData.userData,
+      registrationComplete: userData.userData?.registrationComplete !== false
+    };
+    
+    await AsyncStorage.setItem('userProfile', JSON.stringify(profileData));
+    
+    // Update state
+    setToken(authToken);
+    setUser(userData.user);
+    setUserData(profileData);
+    
+    // Check if this is a new user (first time registration)
+    if (isNew) {
+      console.log('👤 New user detected, showing registration alert');
       
-      // Store auth token and user data
-      await AsyncStorage.setItem('authToken', authToken);
-      await AsyncStorage.setItem('userInfo', JSON.stringify(userData.user));
+      // Check if user has already completed registration
+      const hasCompletedRegistration = profileData.registrationComplete;
+      const hasSeenAlert = await AsyncStorage.getItem(`registrationAlert_${profileData.email || profileData.phoneNumber}`);
       
-      // Update state correctly - using proper state setters
-      setToken(authToken);
-      setUser(userData.user);
-      
-      // Set userData if provided
-      if (userData.userData) {
-        setUserData(userData.userData);
-        await AsyncStorage.setItem('userProfile', JSON.stringify(userData.userData));
+      if (!hasCompletedRegistration && !hasSeenAlert) {
+        setIsNewUser(true);
+        setShowRegistrationAlert(true);
+        
+        // Mark that this user has seen the alert (temporary until registration is complete)
+        await AsyncStorage.setItem(`registrationAlert_${profileData.email || profileData.phoneNumber}`, 'true');
       }
+    }
+    
+    // Register any pending FCM token after successful login
+    try {
+      const { registerPendingFcmToken } = await import('../services/pushNotificationHelper');
+      if (typeof registerPendingFcmToken === 'function') {
+        await registerPendingFcmToken();
+      }
+    } catch (error) {
+      console.log('FCM token registration not available:', error.message);
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Login error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Add function to complete registration
+const completeRegistration = async (registrationData) => {
+  try {
+    console.log('✅ Completing registration for user');
+    
+    // Update user data with registration completion
+    const updatedUserData = {
+      ...userData,
+      ...registrationData,
+      registrationComplete: true,
+      customerId: registrationData.customerId || `CUST_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    
+    // Update in backend
+    const response = await fetch(`${API_URL}/api/user/complete-registration`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(updatedUserData)
+    });
+    
+    if (response.ok) {
+      // Update local storage and state
+      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedUserData));
+      setUserData(updatedUserData);
+      setShowRegistrationAlert(false);
+      setIsNewUser(false);
       
-      // Register any pending FCM token after successful login
-      await registerPendingFcmToken();
-      
+      return { success: true, userData: updatedUserData };
+    } else {
+      throw new Error('Failed to complete registration');
+    }
+  } catch (error) {
+    console.error('Complete registration error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+
+  // Add a new function to dismiss the registration alert
+  const dismissRegistrationAlert = async () => {
+    try {
+      setShowRegistrationAlert(false);
+      await AsyncStorage.setItem('hasSeenRegistrationAlert', 'true');
       return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Error dismissing registration alert:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Add a new function to update registration status
+  const updateRegistrationStatus = async (isComplete) => {
+    try {
+      // Update userData with registration status
+      const updatedUserData = {
+        ...userData,
+        registrationComplete: isComplete
+      };
+      
+      // Update state
+      setUserData(updatedUserData);
+      
+      // Update AsyncStorage
+      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedUserData));
+      
+      console.log(`✅ Registration status updated to: ${isComplete ? 'complete' : 'incomplete'}`);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating registration status:', error);
       return { success: false, error: error.message };
     }
   };
@@ -228,6 +339,8 @@ export const UserProvider = ({ children }) => {
       setUser(null);
       setUserData(null);
       setToken(null);
+      setIsNewUser(false);
+      setShowRegistrationAlert(false);
       
       console.log('✅ Logout completed successfully');
       return { success: true };
@@ -238,6 +351,8 @@ export const UserProvider = ({ children }) => {
       setUser(null);
       setUserData(null);
       setToken(null);
+      setIsNewUser(false);
+      setShowRegistrationAlert(false);
       return { success: false, message: error.message };
     }
   };
@@ -247,11 +362,15 @@ export const UserProvider = ({ children }) => {
     userData,
     token,
     loading,
+    isNewUser,
+    showRegistrationAlert,
     login,
     updateUserProfile,
     uploadProfilePicture,
     refreshUserData,
     logout,
+    updateRegistrationStatus,
+    dismissRegistrationAlert,
   };
 
   return (
@@ -268,6 +387,22 @@ export const useUser = () => {
   }
   return context;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // // D:\cddd\NEW_reals2chat_frontend-main\src\context\UserContext.js
 // import React, { createContext, useState, useContext, useEffect } from 'react';

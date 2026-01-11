@@ -150,31 +150,82 @@ const handleEmailLogin = async () => {
     
     console.log('Login response:', data);
     
-    if (response.ok && data.success) {
-      console.log('✅ Email login successful');
-      
-      // Store user profile with registrationComplete flag
-      const userProfileData = {
-        ...data.user,
-        registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
-      };
-      
-      await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
-      
-      // Use UserContext to handle login
-      const loginResult = await login(data.token, {
-        user: data.user,
-        userData: userProfileData
-      });
-      
-      if (loginResult.success) {
-        console.log('✅ Login completed, navigation will be handled by AuthNavigator');
-      } else {
-        throw new Error(loginResult.error || 'Failed to update authentication state');
-      }
-    } else {
-      Alert.alert('Error', data.message || 'Login failed');
-    }
+// In handleEmailLogin function
+if (response.ok && data.success) {
+  console.log('✅ Email login successful');
+  
+  // Store user profile with registrationComplete flag
+  const userProfileData = {
+    ...data.user,
+    registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
+  };
+  
+  await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
+  
+  // Use UserContext to handle login
+  const loginResult = await login(data.token, {
+    user: data.user,
+    userData: userProfileData
+  }, data.isNewUser); // Pass the isNewUser flag
+  
+  if (loginResult.success) {
+    console.log('✅ Login completed, navigation will be handled by AuthNavigator');
+  } else {
+    throw new Error(loginResult.error || 'Failed to update authentication state');
+  }
+}
+
+// In handleGoogleLogin function
+if (response.ok && data.success) {
+  console.log('Google authentication successful');
+  
+  // Store user profile with registrationComplete flag
+  const userProfileData = {
+    ...data.user,
+    registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
+  };
+  
+  await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
+  
+  // Use UserContext to handle login
+  const loginResult = await login(data.token, {
+    user: data.user,
+    userData: userProfileData
+  }, data.isNewUser); // Pass the isNewUser flag
+  
+  if (loginResult.success) {
+    console.log('✅ Google login completed, navigation will be handled by AuthNavigator');
+  } else {
+    throw new Error(loginResult.error || 'Failed to update authentication state');
+  }
+}
+
+// In handleVerifyOTP function
+if (response.ok) {
+  console.log('Phone verification successful');
+  
+  // Store user profile with registrationComplete flag
+  const userProfileData = {
+    ...data.user,
+    registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
+  };
+  
+  await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
+  
+  // Use UserContext to handle login
+  const loginResult = await login(data.token, {
+    user: data.user,
+    userData: userProfileData
+  }, data.isNewUser); // Pass the isNewUser flag
+  
+  if (loginResult.success) {
+    setShowOTPModal(false);
+    setOtp('');
+    console.log('✅ Phone login completed, navigation will be handled by AuthNavigator');
+  } else {
+    throw new Error(loginResult.error || 'Failed to update authentication state');
+  }
+}
   } catch (error) {
     console.error('Email login error:', error);
     Alert.alert('Error', error.message || 'Network error. Please try again.');
@@ -185,68 +236,10 @@ const handleEmailLogin = async () => {
 
 
 
-// In your LoginScreen.js, update the handleVerifyOTP function:
-const handleVerifyOTP = async () => {
-  if (!confirmation || !otp || otp.length !== 6) {
-    Alert.alert('Error', 'Please enter a valid 6-digit OTP');
-    return;
-  }
-  setLoading(true);
-  try {
-    const result = await confirmation.confirm(otp);
-    const currentUser = result.user;
-    console.log('OTP verified, user:', currentUser.uid, currentUser.phoneNumber);
-    if (currentUser) {
-      const phone = `+91${phoneNumber}`;
-      const response = await fetch(`${API_URL}/api/auth/verify-phone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: phone }),
-      });
-      const data = await response.json();
-      console.log('verify-phone response:', data);
-      if (response.ok) {
-        console.log('Phone verification successful');
-        
-        // Store user profile with registrationComplete flag
-        const userProfileData = {
-          ...data.user,
-          registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
-        };
-        
-        await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
-        
-        // Use UserContext to handle login
-        const loginResult = await login(data.token, {
-          user: data.user,
-          userData: userProfileData
-        });
-        
-        if (loginResult.success) {
-          setShowOTPModal(false);
-          setOtp('');
-          console.log('✅ Phone login completed, navigation will be handled by AuthNavigator');
-        } else {
-          throw new Error(loginResult.error || 'Failed to update authentication state');
-        }
-      } else {
-        console.error('verify-phone failed:', data.message);
-        Alert.alert('Error', data.message || 'Failed to verify user status');
-      }
-    }
-  } catch (error) {
-    console.error('OTP verification error:', error);
-    Alert.alert('Invalid OTP', error.message || 'The OTP you entered is incorrect. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
 
+// LoginScreen.tsx - Update the handleGoogleLogin and handleVerifyOTP functions
 
-
-
-
-// In your LoginScreen.js, update the handleGoogleLogin function:
+// Update handleGoogleLogin
 const handleGoogleLogin = async () => {
   if (loading) return;
   setLoading(true);
@@ -308,6 +301,7 @@ const handleGoogleLogin = async () => {
       
       if (loginResult.success) {
         console.log('✅ Google login completed, navigation will be handled by AuthNavigator');
+        // Navigation will be handled by AppNavigator based on registrationComplete
       } else {
         throw new Error(loginResult.error || 'Failed to update authentication state');
       }
@@ -343,6 +337,67 @@ const handleGoogleLogin = async () => {
     setLoading(false);
   }
 };
+
+// Update handleVerifyOTP
+const handleVerifyOTP = async () => {
+  if (!confirmation || !otp || otp.length !== 6) {
+    Alert.alert('Error', 'Please enter a valid 6-digit OTP');
+    return;
+  }
+  setLoading(true);
+  try {
+    const result = await confirmation.confirm(otp);
+    const currentUser = result.user;
+    console.log('OTP verified, user:', currentUser.uid, currentUser.phoneNumber);
+    if (currentUser) {
+      const phone = `+91${phoneNumber}`;
+      const response = await fetch(`${API_URL}/api/auth/verify-phone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: phone }),
+      });
+      const data = await response.json();
+      console.log('verify-phone response:', data);
+      if (response.ok) {
+        console.log('Phone verification successful');
+        
+        // Store user profile with registrationComplete flag
+        const userProfileData = {
+          ...data.user,
+          registrationComplete: data.user.registrationComplete !== false // Default to true if not specified
+        };
+        
+        await AsyncStorage.setItem('userProfile', JSON.stringify(userProfileData));
+        
+        // Use UserContext to handle login
+        const loginResult = await login(data.token, {
+          user: data.user,
+          userData: userProfileData
+        });
+        
+        if (loginResult.success) {
+          setShowOTPModal(false);
+          setOtp('');
+          console.log('✅ Phone login completed, navigation will be handled by AuthNavigator');
+          // Navigation will be handled by AppNavigator based on registrationComplete
+        } else {
+          throw new Error(loginResult.error || 'Failed to update authentication state');
+        }
+      } else {
+        console.error('verify-phone failed:', data.message);
+        Alert.alert('Error', data.message || 'Failed to verify user status');
+      }
+    }
+  } catch (error) {
+    console.error('OTP verification error:', error);
+    Alert.alert('Invalid OTP', error.message || 'The OTP you entered is incorrect. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
 
 
   const handleSocialLogin = (provider) => {

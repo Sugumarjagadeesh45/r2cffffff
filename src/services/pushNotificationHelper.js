@@ -198,12 +198,14 @@
 
 
 
-import messaging from '@react-native-firebase/messaging';
+
+import messaging, { AuthorizationStatus } from '@react-native-firebase/messaging';
+import auth from '@react-native-firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Platform } from 'react-native';
 import PushNotification from 'react-native-push-notification';
-import PushNotificationIOS from '@react-native-community/push-notification-ios';
+import { getApp } from '@react-native-firebase/app';
 
 const API_URL = 'http://10.136.59.126:5000/api'; 
 
@@ -220,17 +222,19 @@ PushNotification.createChannel(
   (created) => console.log(`Channel created: ${created}`)
 );
 
-// Store navigation reference
-let navigationRef = null;
-
-// Export function to set navigation reference
-export const setNavigationRef = (ref) => {
-  console.log('[FCM] Setting navigation reference');
-  navigationRef = ref;
-};
-
 export const getFCMToken = async () => {
   try {
+    // Check authorization status first
+    const authStatus = await messaging().requestPermission();
+    const enabled =
+      authStatus === AuthorizationStatus.AUTHORIZED ||
+      authStatus === AuthorizationStatus.PROVISIONAL;
+
+    if (!enabled) {
+      console.log('[FCM] ⚠️ Notification permissions not granted');
+      return null;
+    }
+
     // 1. Check if token is already saved in storage
     let fcmToken = await AsyncStorage.getItem('fcmToken');
 
@@ -240,6 +244,7 @@ export const getFCMToken = async () => {
         fcmToken = await messaging().getToken();
       } catch (error) {
         console.log('[FCM] ⚠️ Failed to fetch fresh token:', error);
+        return null;
       }
       
       if (fcmToken) {
@@ -250,13 +255,22 @@ export const getFCMToken = async () => {
       console.log('[FCM] 💾 Token found in storage:', fcmToken);
     }
 
-    // 3. Send Token to Backend
-    if (fcmToken) {
+    // 3. Send Token to Backend - Wait for user to be authenticated
+    const userToken = await AsyncStorage.getItem('authToken');
+    if (fcmToken && userToken) {
       await registerTokenInBackend(fcmToken);
+    } else if (!userToken) {
+      console.log('[FCM] ⚠️ User not authenticated, will register token after login');
+      // Store token for later registration when user logs in
+      if (fcmToken) {
+        await AsyncStorage.setItem('pendingFcmToken', fcmToken);
+      }
     }
     
+    return fcmToken;
   } catch (error) {
     console.error('[FCM] ❌ Error getting token:', error);
+    return null;
   }
 };
 
@@ -272,22 +286,53 @@ const registerTokenInBackend = async (token) => {
 
     console.log('[FCM] 📤 Sending token to backend...');
 
-    await axios.post(
+    const response = await axios.post(
       `${API_URL}/notifications/register-token`,
       { token: token },
       {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${userToken}` 
-        }
+        },
+        timeout: 5000, // Add timeout to prevent hanging
       }
     );
     
     console.log('[FCM] ✅ Token registered successfully in Backend!');
     
   } catch (error) {
-    // We suppress the error log to avoid clutter if it's just a duplicate key error
-    console.log('[FCM] ℹ️ Backend registration status:', error.response?.status || error.message);
+    // Handle specific error cases
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.log('[FCM] ⚠️ Backend registration error:', error.response.status, error.response.data);
+      
+      // If it's a 401 (unauthorized), clear the auth token
+      if (error.response.status === 401) {
+        await AsyncStorage.removeItem('authToken');
+        await AsyncStorage.removeItem('userInfo');
+      }
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.log('[FCM] ⚠️ No response from server:', error.message);
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.log('[FCM] ⚠️ Request setup error:', error.message);
+    }
+  }
+};
+
+// Function to register pending FCM token after login
+export const registerPendingFcmToken = async () => {
+  try {
+    const pendingToken = await AsyncStorage.getItem('pendingFcmToken');
+    if (pendingToken) {
+      console.log('[FCM] 🔄 Registering pending FCM token after login');
+      await registerTokenInBackend(pendingToken);
+      await AsyncStorage.removeItem('pendingFcmToken');
+    }
+  } catch (error) {
+    console.error('[FCM] ❌ Error registering pending token:', error);
   }
 };
 
@@ -323,12 +368,12 @@ export const setupNotificationListeners = () => {
 };
 
 // Handle notification tap when app is in background
-export const setupNotificationTapHandler = () => {
+export const setupNotificationTapHandler = (navigation) => {
   // Check if app was opened from notification
   messaging().getInitialNotification().then(remoteMessage => {
     if (remoteMessage) {
       console.log('[FCM] App opened from notification:', remoteMessage);
-      handleNotificationNavigation(remoteMessage.data);
+      handleNotificationNavigation(remoteMessage.data, navigation);
     }
   });
 
@@ -336,56 +381,28 @@ export const setupNotificationTapHandler = () => {
   const unsubscribe = messaging().onNotificationOpenedApp(remoteMessage => {
     if (remoteMessage) {
       console.log('[FCM] Notification opened app:', remoteMessage);
-      handleNotificationNavigation(remoteMessage.data);
+      handleNotificationNavigation(remoteMessage.data, navigation);
     }
   });
 
-  // Handle local notification tap
-  PushNotification.configure({
-    onNotification: function(notification) {
-      console.log('[PushNotification] Local notification tapped:', notification);
-      
-      if (notification.userInteraction) {
-        handleNotificationNavigation(notification.data || notification.userInfo);
-      }
-      
-      notification.finish(PushNotificationIOS.FetchResult.NoData);
-    },
-    requestPermissions: Platform.OS === 'ios',
-  });
-
-  // Return unsubscribe function
   return unsubscribe;
 };
 
 // Navigate based on notification data
-const handleNotificationNavigation = (data) => {
-  if (!data || !navigationRef) {
-    console.log('[FCM] No navigation data or ref available');
-    return;
-  }
-  
-  console.log('[FCM] Navigating with data:', data);
+const handleNotificationNavigation = (data, navigation) => {
+  if (!data || !navigation) return;
   
   if (data.type === 'chat_message' && data.otherUserId) {
-    // First navigate to the main tab navigator if needed
-    navigationRef.current?.resetRoot({
-      index: 0,
-      routes: [{ name: 'Main' }],
+    navigation.navigate('Message', {
+      user: { _id: data.otherUserId }
     });
-    
-    // Then navigate to the Message screen
-    setTimeout(() => {
-      navigationRef.current?.navigate('Message', {
-        user: { _id: data.otherUserId, name: data.otherUserName }
-      });
-    }, 300); // Increased delay to ensure navigation stack is ready
   } else if (data.type === 'FRIEND_REQUEST') {
-    navigationRef.current?.navigate('PersonalNotifications');
+    navigation.navigate('FriendRequests');
   } else if (data.type === 'FRIEND_REQUEST_ACCEPTED') {
-    navigationRef.current?.navigate('Friends');
+    navigation.navigate('Friends');
   }
 };
+
 
 
 
